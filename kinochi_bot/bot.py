@@ -4,7 +4,7 @@ import sys
 import os
 
 
-from database.engine import init_db
+from .database.engine import init_db
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
