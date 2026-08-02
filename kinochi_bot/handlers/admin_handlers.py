@@ -1,14 +1,14 @@
-from aiogram import Router, F
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
+from ..aiogram import Router, F
+from ..aiogram.filters import Command
+from ..aiogram.fsm.context import FSMContext
+from ..aiogram.types import Message, CallbackQuery
+from ..aiogram.exceptions import TelegramBadRequest
 
-import database.requests as rq
-from config import ADMIN_IDS
-from filters.admin_filter import IsAdmin
-from keyboards.user_kb import main_menu, cancel_kb, plan_title
-from keyboards.admin_kb import (
+from ..database import requests as rq
+from ..config import ADMIN_IDS
+from ..filters.admin_filter import IsAdmin
+from ..keyboards.user_kb import main_menu, cancel_kb, plan_title
+from ..keyboards.admin_kb import (
     admin_main_kb, back_to_admin_kb, admin_movies_kb, admin_series_kb,
     admin_categories_kb, admin_channels_kb, admin_premium_kb, admin_promo_kb,
     admin_promo_list_kb, admin_promo_detail_kb, plan_choice_kb, category_choice_kb,
