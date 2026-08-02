@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, func, delete as sa_delete
 
 from .engine import async_session
-from database.models import (
+from .models import (
     User, Category, Movie, Series, Episode,
     RequiredChannel, PremiumPlan, PromoCode, BroadcastLog,
 )
