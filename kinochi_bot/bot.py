@@ -2,8 +2,7 @@ import asyncio
 import logging
 import sys
 import os
-# Loyihaning asosiy papkasini (ildizini) Python yo'liga qo'shamiz
-sys.path.append("/app")
+
 
 from database.engine import init_db
 from aiogram import Bot, Dispatcher
