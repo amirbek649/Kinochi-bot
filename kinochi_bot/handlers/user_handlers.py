@@ -4,13 +4,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 
-import database.requests as rq
-from config import ADMIN_IDS
-from keyboards.user_kb import (
+from ..database import requests as rq
+from ..config import ADMIN_IDS
+from ..keyboards.user_kb import (
     main_menu, cancel_kb, categories_kb, movies_list_kb, series_list_kb,
     episodes_kb, premium_menu_kb, subscribe_kb, plan_title,
 )
-from states.all_states import UserStates
+from ..states.all_states import UserStates
 
 user_router = Router()
 
