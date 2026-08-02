@@ -14,7 +14,7 @@ from ..keyboards.admin_kb import (
     admin_promo_list_kb, admin_promo_detail_kb, plan_choice_kb, category_choice_kb,
     skip_kb, movie_edit_fields_kb, premium_choice_kb, admin_plan_manage_kb,
 )
-from states.all_states import (
+from ..states.all_states import (
     AdminMovieAdd, AdminMovieEdit, AdminMovieDelete, AdminMovieSearch,
     AdminSeriesAdd, AdminSeriesDelete, AdminEpisodeAdd,
     AdminCategory, AdminChannel, AdminPremium, AdminPromo, AdminBroadcast,
