@@ -10,9 +10,9 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from .config import BOT_TOKEN
-from database.requests import ensure_default_plans
-from handlers.admin_handlers import admin_router
-from handlers.user_handlers import user_router
+from .database.requests import ensure_default_plans
+from .handlers.admin_handlers import admin_router
+from .handlers.user_handlers import user_router
 
 
 async def main():
