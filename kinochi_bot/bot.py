@@ -8,7 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from .config import BOT_TOKEN, ADMIN_IDS  # ADMIN_IDS config faylingizda bo'lishi kerak (masalan list yoki bitta id)
-from .database.requests import ensure_default_plans
+from .database.requests import ensure_default_plans, ensure_default_settings
 from .handlers.admin_handlers import admin_router
 from .handlers.user_handlers import user_router
 
@@ -38,6 +38,7 @@ async def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     await init_db()
     await ensure_default_plans()
+    await ensure_default_settings()
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     # admin_router avval ulanadi, chunki u o'z filtrlariga ega (faqat admin uchun ishlaydi)
