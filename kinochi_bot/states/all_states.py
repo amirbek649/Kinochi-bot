@@ -50,16 +50,30 @@ class AdminSeriesAdd(StatesGroup):
     language = State()
     is_premium = State()
     cover = State()
+    episode_video = State()   # serial qo'shilgandan so'ng darhol qism video so'raladi
 
 
 class AdminSeriesDelete(StatesGroup):
     choose_code = State()
 
 
+class AdminSeriesEdit(StatesGroup):
+    choose_code = State()
+    choose_field = State()
+    new_value = State()
+
+
 class AdminEpisodeAdd(StatesGroup):
     series_code = State()
     episode_number = State()
     video = State()
+
+
+class AdminEpisodeEdit(StatesGroup):
+    series_code = State()
+    episode_number = State()
+    video = State()
+
 
 
 # --------------------------- ADMIN: KATEGORIYALAR ---------------------------
@@ -95,3 +109,13 @@ class AdminPromo(StatesGroup):
 
 class AdminBroadcast(StatesGroup):
     waiting_content = State()
+
+
+# --------------------------- ADMIN: SOZLAMALAR ---------------------------
+
+class AdminSettings(StatesGroup):
+    edit_payment_template = State()
+    edit_card_1 = State()
+    edit_card_2 = State()
+    edit_admin_username = State()
+
