@@ -6,6 +6,7 @@ from .engine import async_session
 from .models import (
     User, Category, Movie, Series, Episode,
     RequiredChannel, PremiumPlan, PromoCode, BroadcastLog,
+    PremiumOrder, BotSettings,
 )
 
 
