@@ -1,9 +1,9 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
-from ..states.all_states import AdminSettings
+
 from ..database import requests as rq
 from ..config import ADMIN_IDS
 from ..filters.admin_filter import IsAdmin
@@ -13,11 +13,15 @@ from ..keyboards.admin_kb import (
     admin_categories_kb, admin_channels_kb, admin_premium_kb, admin_promo_kb,
     admin_promo_list_kb, admin_promo_detail_kb, plan_choice_kb, category_choice_kb,
     skip_kb, movie_edit_fields_kb, premium_choice_kb, admin_plan_manage_kb,
+    series_edit_fields_kb, after_episode_kb,
+    admin_settings_kb, admin_premium_settings_kb, order_confirm_kb,
 )
 from ..states.all_states import (
     AdminMovieAdd, AdminMovieEdit, AdminMovieDelete, AdminMovieSearch,
     AdminSeriesAdd, AdminSeriesDelete, AdminEpisodeAdd,
+    AdminSeriesEdit, AdminEpisodeEdit,
     AdminCategory, AdminChannel, AdminPremium, AdminPromo, AdminBroadcast,
+    AdminSettings,
 )
 
 admin_router = Router()
