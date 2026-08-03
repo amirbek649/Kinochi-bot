@@ -441,11 +441,12 @@ async def _finalize_series(state: FSMContext, cover_file_id: str | None):
 @admin_router.callback_query(F.data == "skip_series_cover", AdminSeriesAdd.cover)
 async def skip_series_cover(callback: CallbackQuery, state: FSMContext):
     series = await _finalize_series(state, None)
-    await state.clear()
+    await state.update_data(series_id=series.id, series_title=series.title, next_episode=1)
+    await state.set_state(AdminSeriesAdd.episode_video)
     await callback.message.answer(
-        f"✅ Serial qo'shildi!\n\n📺 {series.title}\n🔢 Kod: {series.code}\n\n"
-        "Endi '➕ Qism qo'shish' orqali qismlarini qo'shishingiz mumkin.",
-        reply_markup=main_menu(True),
+        f"✅ Serial qo'shildi!\n\n📺 <b>{series.title}</b>\n🔢 Kod: {series.code}\n\n"
+        f"🎬 Endi <b>1-qism</b> video faylini yuboring:",
+        reply_markup=cancel_kb(),
     )
     await callback.answer()
 
@@ -453,17 +454,82 @@ async def skip_series_cover(callback: CallbackQuery, state: FSMContext):
 @admin_router.message(AdminSeriesAdd.cover, F.photo)
 async def receive_series_cover(message: Message, state: FSMContext):
     series = await _finalize_series(state, message.photo[-1].file_id)
-    await state.clear()
+    await state.update_data(series_id=series.id, series_title=series.title, next_episode=1)
+    await state.set_state(AdminSeriesAdd.episode_video)
     await message.answer(
-        f"✅ Serial qo'shildi!\n\n📺 {series.title}\n🔢 Kod: {series.code}\n\n"
-        "Endi '➕ Qism qo'shish' orqali qismlarini qo'shishingiz mumkin.",
-        reply_markup=main_menu(True),
+        f"✅ Serial qo'shildi!\n\n📺 <b>{series.title}</b>\n🔢 Kod: {series.code}\n\n"
+        f"🎬 Endi <b>1-qism</b> video faylini yuboring:",
+        reply_markup=cancel_kb(),
     )
 
 
 @admin_router.message(AdminSeriesAdd.cover)
 async def receive_series_cover_invalid(message: Message):
     await message.answer("❌ Iltimos rasm yuboring yoki o'tkazib yuborish tugmasini bosing.")
+
+
+@admin_router.message(AdminSeriesAdd.episode_video, F.video)
+async def receive_series_first_episode(message: Message, state: FSMContext):
+    """Serial qo'shish jarayonida ketma-ket qism videolarini qabul qiladi."""
+    data = await state.get_data()
+    series_id = data["series_id"]
+    series_title = data["series_title"]
+    ep_num = data.get("next_episode", 1)
+
+    # Duplicate episode tekshirish
+    existing = await rq.get_episode_by_series_and_number(series_id, ep_num)
+    if existing:
+        await message.answer(
+            f"⚠️ {ep_num}-qism allaqachon mavjud. Yana qism qo'shish tugmasini bosib davom eting.",
+            reply_markup=after_episode_kb(series_id),
+        )
+        return
+
+    await rq.add_episode(series_id, ep_num, message.video.file_id)
+    await state.update_data(next_episode=ep_num + 1)
+    await message.answer(
+        f"✅ <b>{ep_num}-qism</b> saqlandi!\n\n"
+        f"📺 {series_title} — jami {ep_num} ta qism\n\n"
+        "Yana qism qo'shasizmi yoki yakunlaysizmi?",
+        reply_markup=after_episode_kb(series_id),
+    )
+
+
+@admin_router.message(AdminSeriesAdd.episode_video)
+async def receive_series_episode_invalid(message: Message):
+    await message.answer("❌ Iltimos video fayl yuboring.")
+
+
+@admin_router.callback_query(F.data.startswith("adm_series:more_ep:"))
+async def cb_more_episode(callback: CallbackQuery, state: FSMContext):
+    """Yana qism qo'shish — keyingi qism raqami bilan davom etadi."""
+    series_id = int(callback.data.split(":")[2])
+    data = await state.get_data()
+    ep_num = data.get("next_episode", 1)
+    await state.set_state(AdminSeriesAdd.episode_video)
+    await callback.message.answer(
+        f"🎬 <b>{ep_num}-qism</b> video faylini yuboring:",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("adm_series:finish:"))
+async def cb_finish_series(callback: CallbackQuery, state: FSMContext):
+    """Barcha qismlar qo'shildi — jarayonni yakunlash."""
+    data = await state.get_data()
+    series_title = data.get("series_title", "Serial")
+    ep_num = data.get("next_episode", 1) - 1
+    await state.clear()
+    await callback.message.answer(
+        f"✅ <b>{series_title}</b> seriali muvaffaqiyatli saqlandi!\n\n"
+        f"📊 Jami qismlar: <b>{ep_num}</b> ta",
+        reply_markup=main_menu(True),
+    )
+    await callback.message.answer("📺 Seriallar bo'limi:", reply_markup=admin_series_kb())
+    await callback.answer()
+
+
 
 
 # --- Qism qo'shish ---
@@ -893,12 +959,352 @@ async def cb_admin_stats(callback: CallbackQuery):
 
 
 @admin_router.callback_query(F.data == "adm:settings")
-async def cb_admin_settings(callback: CallbackQuery):
+async def cb_admin_settings(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    card1 = await rq.get_setting("card_number_1") or "—"
+    card2 = await rq.get_setting("card_number_2") or "—"
+    admin_username = await rq.get_setting("admin_username") or "—"
     text = (
         "⚙️ <b>Sozlamalar</b>\n\n"
         f"👤 Adminlar soni: {len(ADMIN_IDS)}\n"
-        "🗄 Ma'lumotlar bazasi: SQLite (bot qayta ishga tushganda ham saqlanadi)\n"
-        "ℹ️ Qo'shimcha sozlamalar keyingi versiyalarda qo'shiladi."
+        f"💳 1-karta: <code>{card1}</code>\n"
+        f"💳 2-karta: <code>{card2}</code>\n"
+        f"👤 Admin username: @{admin_username}\n"
+        "🗄 Ma'lumotlar bazasi: SQLite (bot qayta ishga tushganda ham saqlanadi)"
     )
-    await safe_edit(callback, text, back_to_admin_kb())
+    await safe_edit(callback, text, admin_settings_kb())
     await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# SOZLAMALAR: PREMIUM
+# ---------------------------------------------------------------------------
+
+@admin_router.callback_query(F.data == "adm_settings:premium")
+async def cb_premium_settings(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    template = await rq.get_setting("premium_payment_template") or "—"
+    # Faqat birinchi 200 belgisini ko'rsatamiz (preview)
+    preview = template[:200] + ("..." if len(template) > 200 else "")
+    text = (
+        "⚙️ <b>Premium sozlamalari</b>\n\n"
+        "📝 Joriy to'lov xabari (preview):\n"
+        f"<i>{preview}</i>\n\n"
+        "O'zgartirmoqchi bo'lgan parametrni tanlang:"
+    )
+    await safe_edit(callback, text, admin_premium_settings_kb())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "adm_settings:edit_template")
+async def cb_edit_template(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSettings.edit_payment_template)
+    hint = (
+        "📝 Yangi to'lov xabari matnini yuboring.\n\n"
+        "Quyidagi dinamik o'zgaruvchilardan foydalanish mumkin:\n"
+        "<code>{tarif}</code> — tanlangan tarif nomi\n"
+        "<code>{narx}</code> — narx\n"
+        "<code>{card_number_1}</code> — 1-karta raqami\n"
+        "<code>{card_number_2}</code> — 2-karta raqami\n"
+        "<code>{admin_username}</code> — admin username\n"
+        "<code>{user_id}</code> — foydalanuvchi ID\n"
+        "<code>{user_name}</code> — foydalanuvchi ismi"
+    )
+    await callback.message.answer(hint, reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@admin_router.message(AdminSettings.edit_payment_template)
+async def receive_payment_template(message: Message, state: FSMContext):
+    await rq.set_setting("premium_payment_template", message.text)
+    await state.clear()
+    await message.answer("✅ To'lov xabari shabloni yangilandi.", reply_markup=main_menu(True))
+
+
+@admin_router.callback_query(F.data == "adm_settings:edit_card1")
+async def cb_edit_card1(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSettings.edit_card_1)
+    await callback.message.answer("💳 Yangi 1-karta raqamini kiriting:", reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@admin_router.message(AdminSettings.edit_card_1)
+async def receive_card1(message: Message, state: FSMContext):
+    await rq.set_setting("card_number_1", message.text.strip())
+    await state.clear()
+    await message.answer(f"✅ 1-karta raqami yangilandi: <code>{message.text.strip()}</code>", reply_markup=main_menu(True))
+
+
+@admin_router.callback_query(F.data == "adm_settings:edit_card2")
+async def cb_edit_card2(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSettings.edit_card_2)
+    await callback.message.answer("💳 Yangi 2-karta raqamini kiriting:", reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@admin_router.message(AdminSettings.edit_card_2)
+async def receive_card2(message: Message, state: FSMContext):
+    await rq.set_setting("card_number_2", message.text.strip())
+    await state.clear()
+    await message.answer(f"✅ 2-karta raqami yangilandi: <code>{message.text.strip()}</code>", reply_markup=main_menu(True))
+
+
+@admin_router.callback_query(F.data == "adm_settings:edit_admin_username")
+async def cb_edit_admin_username(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSettings.edit_admin_username)
+    await callback.message.answer(
+        "👤 Yangi admin username kiriting (@ belgisisiz, masalan: JAMSHID2426):",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+@admin_router.message(AdminSettings.edit_admin_username)
+async def receive_admin_username(message: Message, state: FSMContext):
+    username = message.text.strip().lstrip("@")
+    await rq.set_setting("admin_username", username)
+    await state.clear()
+    await message.answer(f"✅ Admin username yangilandi: @{username}", reply_markup=main_menu(True))
+
+
+# ---------------------------------------------------------------------------
+# SERIAL TAHRIRLASH
+# ---------------------------------------------------------------------------
+
+@admin_router.callback_query(F.data == "adm_series:edit")
+async def cb_series_edit_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSeriesEdit.choose_code)
+    await callback.message.answer("✏️ Tahrirlash uchun serial kodini kiriting:", reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@admin_router.message(AdminSeriesEdit.choose_code)
+async def receive_series_edit_code(message: Message, state: FSMContext):
+    series = await rq.get_series_by_code(message.text.strip())
+    if not series:
+        await message.answer("❌ Bunday kodli serial topilmadi.")
+        return
+    await state.clear()
+    episodes = await rq.get_episodes_by_series(series.id)
+    ep_info = f"\n📊 Qismlar soni: {len(episodes)} ta" if episodes else "\n📊 Hali qismlar yo'q"
+    await message.answer(
+        f"✏️ <b>{series.title}</b> ({series.code}){ep_info}\n\nQaysi maydonni tahrirlaysiz?",
+        reply_markup=series_edit_fields_kb(series.id),
+    )
+
+
+@admin_router.callback_query(F.data.startswith("adm_series_edit_f:"))
+async def cb_choose_series_edit_field(callback: CallbackQuery, state: FSMContext):
+    _, series_id, field = callback.data.split(":")
+    series_id = int(series_id)
+    if field == "is_premium":
+        await state.update_data(series_id=series_id, field=field)
+        await state.set_state(AdminSeriesEdit.new_value)
+        await callback.message.answer(
+            "💎 Serialning yangi maqomini tanlang:",
+            reply_markup=premium_choice_kb(prefix="editseriesprem"),
+        )
+        await callback.answer()
+        return
+    await state.update_data(series_id=series_id, field=field)
+    await state.set_state(AdminSeriesEdit.new_value)
+    field_names = {
+        "title": "📝 Yangi nomni",
+        "description": "📄 Yangi tavsifni",
+        "year": "📅 Yangi yilni",
+        "quality": "🎞 Yangi sifatni",
+        "language": "🗣 Yangi tilni",
+        "cover_file_id": "🖼 Yangi cover rasmini",
+    }
+    prompt = field_names.get(field, "Yangi qiymatni")
+    await callback.message.answer(f"{prompt} yuboring:", reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("editseriesprem:"), AdminSeriesEdit.new_value)
+async def receive_edit_series_premium(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    is_prem = bool(int(callback.data.split(":")[1]))
+    await rq.update_series_field(data["series_id"], "is_premium", is_prem)
+    await state.clear()
+    await callback.message.answer("✅ Serial maqomi yangilandi.", reply_markup=main_menu(True))
+    await callback.answer()
+
+
+@admin_router.message(AdminSeriesEdit.new_value, F.photo)
+async def receive_series_edit_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if data.get("field") != "cover_file_id":
+        await message.answer("❌ Bu maydon uchun rasm emas, matn kerak.")
+        return
+    await rq.update_series_field(data["series_id"], "cover_file_id", message.photo[-1].file_id)
+    await state.clear()
+    await message.answer("✅ Cover rasmi yangilandi.", reply_markup=main_menu(True))
+
+
+@admin_router.message(AdminSeriesEdit.new_value)
+async def receive_series_edit_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    field = data.get("field")
+    if field == "cover_file_id":
+        await message.answer("❌ Iltimos rasm yuboring.")
+        return
+    await rq.update_series_field(data["series_id"], field, message.text.strip())
+    await state.clear()
+    await message.answer("✅ Yangilandi.", reply_markup=main_menu(True))
+
+
+# ---------------------------------------------------------------------------
+# QISM (EPISODE) TAHRIRLASH
+# ---------------------------------------------------------------------------
+
+@admin_router.callback_query(F.data == "adm_series:edit_episode")
+async def cb_episode_edit_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminEpisodeEdit.series_code)
+    await callback.message.answer("🔢 Qismni tahrirlash uchun serial kodini kiriting:", reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("adm_series_edit_ep:"))
+async def cb_edit_episode_from_series(callback: CallbackQuery, state: FSMContext):
+    """Serial tahrirlash menyusidan qism tahrirlashga o'tish."""
+    series_id = int(callback.data.split(":")[1])
+    series = await rq.get_series_by_id(series_id)
+    if not series:
+        await callback.answer("❌ Serial topilmadi.", show_alert=True)
+        return
+    await state.update_data(series_id=series_id, series_code=series.code)
+    await state.set_state(AdminEpisodeEdit.episode_number)
+    episodes = await rq.get_episodes_by_series(series_id)
+    ep_list = ", ".join(str(e.episode_number) for e in episodes) if episodes else "hali yo'q"
+    await callback.message.answer(
+        f"📺 <b>{series.title}</b>\n"
+        f"📋 Mavjud qismlar: {ep_list}\n\n"
+        "🔢 Tahrirlash uchun qism raqamini kiriting:",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
+
+
+@admin_router.message(AdminEpisodeEdit.series_code)
+async def receive_episode_edit_series_code(message: Message, state: FSMContext):
+    series = await rq.get_series_by_code(message.text.strip())
+    if not series:
+        await message.answer("❌ Bunday kodli serial topilmadi.")
+        return
+    await state.update_data(series_id=series.id, series_code=series.code)
+    await state.set_state(AdminEpisodeEdit.episode_number)
+    episodes = await rq.get_episodes_by_series(series.id)
+    ep_list = ", ".join(str(e.episode_number) for e in episodes) if episodes else "hali yo'q"
+    await message.answer(
+        f"📺 <b>{series.title}</b>\n"
+        f"📋 Mavjud qismlar: {ep_list}\n\n"
+        "🔢 Tahrirlash uchun qism raqamini kiriting:",
+        reply_markup=cancel_kb(),
+    )
+
+
+@admin_router.message(AdminEpisodeEdit.episode_number)
+async def receive_episode_edit_number(message: Message, state: FSMContext):
+    try:
+        ep_num = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Iltimos butun son kiriting.")
+        return
+    data = await state.get_data()
+    series_id = data["series_id"]
+    episode = await rq.get_episode_by_series_and_number(series_id, ep_num)
+    if not episode:
+        await message.answer(f"❌ {ep_num}-qism topilmadi.")
+        return
+    await state.update_data(episode_id=episode.id, ep_num=ep_num)
+    await state.set_state(AdminEpisodeEdit.video)
+    await message.answer(
+        f"🎬 <b>{ep_num}-qism</b> uchun yangi video faylini yuboring:",
+        reply_markup=cancel_kb(),
+    )
+
+
+@admin_router.message(AdminEpisodeEdit.video, F.video)
+async def receive_episode_edit_video(message: Message, state: FSMContext):
+    data = await state.get_data()
+    await rq.update_episode_video(data["episode_id"], message.video.file_id)
+    await state.clear()
+    await message.answer(
+        f"✅ <b>{data['ep_num']}-qism</b> videosi yangilandi.",
+        reply_markup=main_menu(True),
+    )
+
+
+@admin_router.message(AdminEpisodeEdit.video)
+async def receive_episode_edit_video_invalid(message: Message):
+    await message.answer("❌ Iltimos video fayl yuboring.")
+
+
+# ---------------------------------------------------------------------------
+# PREMIUM BUYURTMALARINI TASDIQLASH / RAD ETISH
+# ---------------------------------------------------------------------------
+
+@admin_router.callback_query(F.data.startswith("adm_order:confirm:"))
+async def cb_confirm_order(callback: CallbackQuery, bot: Bot):
+    order_id = int(callback.data.split(":")[2])
+    order = await rq.confirm_premium_order(order_id, callback.from_user.id)
+    if not order:
+        await callback.answer("❌ Buyurtma topilmadi yoki allaqachon ko'rib chiqilgan.", show_alert=True)
+        return
+
+    # Premiumni faollashtirish
+    plan = await rq.get_plan(order.plan_id)
+    if plan:
+        until = await rq.activate_premium(order.user_id, plan.duration_days)
+        until_str = until.strftime("%d.%m.%Y %H:%M")
+    else:
+        until_str = "—"
+
+    # Foydalanuvchiga xabar
+    try:
+        await bot.send_message(
+            chat_id=order.user_id,
+            text=(
+                f"✅ <b>Premium faollashtirildi!</b>\n\n"
+                f"💎 Tarif: <b>{plan_title(order.plan_name)} ({plan.duration_days if plan else '?'} kun)</b>\n"
+                f"⏳ Muddat: <b>{until_str}</b> gacha\n\n"
+                f"Kinochi botidan bahramand bo'ling! 🎬"
+            ),
+        )
+    except Exception:
+        pass
+
+    price_str = f"{order.price:,}".replace(",", " ")
+    await callback.message.edit_text(
+        callback.message.text + f"\n\n✅ <b>Tasdiqlandi!</b> Admin: {callback.from_user.full_name}\nPremium: {until_str} gacha",
+        reply_markup=None,
+    )
+    await callback.answer("✅ Premium faollashtirildi!")
+
+
+@admin_router.callback_query(F.data.startswith("adm_order:reject:"))
+async def cb_reject_order(callback: CallbackQuery, bot: Bot):
+    order_id = int(callback.data.split(":")[2])
+    order = await rq.reject_premium_order(order_id, callback.from_user.id)
+    if not order:
+        await callback.answer("❌ Buyurtma topilmadi yoki allaqachon ko'rib chiqilgan.", show_alert=True)
+        return
+
+    # Foydalanuvchiga xabar
+    try:
+        await bot.send_message(
+            chat_id=order.user_id,
+            text=(
+                "❌ <b>Premium buyurtmangiz rad etildi.</b>\n\n"
+                "Agar bu xato deb hisoblasangiz, admin bilan bog'laning."
+            ),
+        )
+    except Exception:
+        pass
+
+    await callback.message.edit_text(
+        callback.message.text + f"\n\n❌ <b>Rad etildi!</b> Admin: {callback.from_user.full_name}",
+        reply_markup=None,
+    )
+    await callback.answer("❌ Buyurtma rad etildi.")
