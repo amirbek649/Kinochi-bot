@@ -417,8 +417,67 @@ async def cb_enter_promo(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@user_router.callback_query(F.data.startswith("noop:"))
-async def cb_noop(callback: CallbackQuery):
+@user_router.callback_query(F.data.startswith("buypremium:"))
+async def cb_buy_premium(callback: CallbackQuery, bot: Bot):
+    """Foydalanuvchi premium tarif tanladi — admin xabardor qilinadi, foydalanuvchiga to'lov xabari."""
+    plan_id = int(callback.data.split(":")[1])
+    plan = await rq.get_plan(plan_id)
+    if not plan:
+        await callback.answer("❌ Tarif topilmadi.", show_alert=True)
+        return
+
+    user = callback.from_user
+    price_str = f"{plan.price:,}".replace(",", " ") if plan.price else "0"
+
+    # Buyurtmani DB'ga saqlash
+    order = await rq.create_premium_order(
+        user_id=user.id,
+        username=user.username,
+        full_name=user.full_name,
+        plan_id=plan.id,
+        plan_name=plan.name,
+        price=plan.price or 0,
+    )
+
+    # Adminlarga xabar yuborish
+    user_mention = f"<a href='tg://user?id={user.id}'>{user.full_name or user.username or user.id}</a>"
+    admin_text = (
+        f"💎 <b>Yangi Premium buyurtma!</b>\n\n"
+        f"👤 Foydalanuvchi: {user_mention}\n"
+        f"🆔 Telegram ID: <code>{user.id}</code>\n"
+        f"📦 Tarif: <b>{plan_title(plan.name)} ({plan.duration_days} kun)</b>\n"
+        f"💰 Narxi: <b>{price_str} so'm</b>\n"
+        f"🕐 Vaqt: {order.created_at.strftime('%d.%m.%Y %H:%M')}\n"
+        f"📊 Status: Kutilmoqda\n"
+        f"🔖 Buyurtma ID: #{order.id}\n\n"
+        f"Foydalanuvchiga to'lovni amalga oshirish bo'yicha ko'rsatma yuborildi."
+    )
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(
+                chat_id=admin_id,
+                text=admin_text,
+                reply_markup=order_confirm_kb(order.id),
+            )
+        except Exception:
+            pass
+
+    # Foydalanuvchiga to'lov xabarini DB'dan olish va yuborish
+    template = await rq.get_setting("premium_payment_template")
+    card1 = await rq.get_setting("card_number_1") or "—"
+    card2 = await rq.get_setting("card_number_2") or "—"
+    admin_username = await rq.get_setting("admin_username") or "admin"
+
+    payment_text = template.format(
+        tarif=f"{plan_title(plan.name)} ({plan.duration_days} kun)",
+        narx=price_str,
+        card_number_1=card1,
+        card_number_2=card2,
+        admin_username=admin_username,
+        user_id=user.id,
+        user_name=user.full_name or user.username or str(user.id),
+    )
+    await callback.message.answer(payment_text)
     await callback.answer()
 
 
