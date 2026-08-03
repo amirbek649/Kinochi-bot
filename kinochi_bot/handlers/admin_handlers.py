@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
-
+from ..states.all_states import AdminSettings
 from ..database import requests as rq
 from ..config import ADMIN_IDS
 from ..filters.admin_filter import IsAdmin
