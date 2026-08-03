@@ -37,11 +37,13 @@ def admin_movies_kb() -> InlineKeyboardMarkup:
 def admin_series_kb() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.button(text="➕ Serial qo'shish", callback_data="adm_series:add")
+    b.button(text="✏️ Serial tahrirlash", callback_data="adm_series:edit")
     b.button(text="➕ Qism qo'shish", callback_data="adm_series:add_episode")
+    b.button(text="✏️ Qism tahrirlash", callback_data="adm_series:edit_episode")
     b.button(text="🗑 Serial o'chirish", callback_data="adm_series:delete")
     b.button(text="📋 Seriallar ro'yxati", callback_data="adm_series:list")
     b.button(text="🔙 Orqaga", callback_data="adm:back")
-    b.adjust(2, 2, 1)
+    b.adjust(2, 2, 2, 1)
     return b.as_markup()
 
 
@@ -172,5 +174,64 @@ def movie_edit_fields_kb(movie_id: int) -> InlineKeyboardMarkup:
     for field, label in fields:
         b.button(text=label, callback_data=f"adm_movie_edit_f:{movie_id}:{field}")
     b.button(text="🔙 Orqaga", callback_data="adm:back")
+    b.adjust(2)
+    return b.as_markup()
+
+
+def series_edit_fields_kb(series_id: int) -> InlineKeyboardMarkup:
+    """Serial tahrirlash - qaysi maydonni o'zgartirish tanlash."""
+    b = InlineKeyboardBuilder()
+    fields = [
+        ("title", "📝 Nomi"),
+        ("description", "📄 Tavsifi"),
+        ("year", "📅 Yili"),
+        ("quality", "🎞 Sifati"),
+        ("language", "🗣 Tili"),
+        ("is_premium", "💎 Maqomi (Premium/Bepul)"),
+        ("cover_file_id", "🖼 Cover rasmi"),
+    ]
+    for field, label in fields:
+        b.button(text=label, callback_data=f"adm_series_edit_f:{series_id}:{field}")
+    b.button(text="🎬 Qism videosini tahrirlash", callback_data=f"adm_series_edit_ep:{series_id}")
+    b.button(text="🔙 Orqaga", callback_data="adm:series")
+    b.adjust(2)
+    return b.as_markup()
+
+
+def after_episode_kb(series_id: int) -> InlineKeyboardMarkup:
+    """Qism qo'shilgandan keyin chiquvchi keyboard: Yana qo'sh yoki Saqlash."""
+    b = InlineKeyboardBuilder()
+    b.button(text="➕ Yana qism qo'shish", callback_data=f"adm_series:more_ep:{series_id}")
+    b.button(text="✅ Yuklash / Saqlash", callback_data=f"adm_series:finish:{series_id}")
+    b.adjust(1)
+    return b.as_markup()
+
+
+def admin_settings_kb() -> InlineKeyboardMarkup:
+    """Admin sozlamalar asosiy menyusi."""
+    b = InlineKeyboardBuilder()
+    b.button(text="⚙️ Premium sozlamalari", callback_data="adm_settings:premium")
+    b.button(text="🔙 Orqaga", callback_data="adm:back")
+    b.adjust(1)
+    return b.as_markup()
+
+
+def admin_premium_settings_kb() -> InlineKeyboardMarkup:
+    """Premium sozlamalar menyusi."""
+    b = InlineKeyboardBuilder()
+    b.button(text="📝 To'lov xabarini tahrirlash", callback_data="adm_settings:edit_template")
+    b.button(text="💳 1-karta raqamini o'zgartirish", callback_data="adm_settings:edit_card1")
+    b.button(text="💳 2-karta raqamini o'zgartirish", callback_data="adm_settings:edit_card2")
+    b.button(text="👤 Admin username o'zgartirish", callback_data="adm_settings:edit_admin_username")
+    b.button(text="🔙 Orqaga", callback_data="adm:settings")
+    b.adjust(1)
+    return b.as_markup()
+
+
+def order_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
+    """Premium buyurtmani tasdiqlash yoki rad etish."""
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Tasdiqlash", callback_data=f"adm_order:confirm:{order_id}")
+    b.button(text="❌ Rad etish", callback_data=f"adm_order:reject:{order_id}")
     b.adjust(2)
     return b.as_markup()
