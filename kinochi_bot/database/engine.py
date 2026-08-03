@@ -4,7 +4,15 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from ..config import DB_URL
 from .models import Base
 
+# Railway avtomatik DATABASE_URL yaratadi
+DB_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:5432/db")
+
+# Agar URL "postgresql://" bilan boshlansa, uni async versiyaga o'zgartirish
+if DB_URL.startswith("postgresql://") and "+asyncpg" not in DB_URL:
+    DB_URL = DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 engine = create_async_engine(DB_URL, echo=False)
+
 async_session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
