@@ -423,3 +423,151 @@ async def log_broadcast(sent: int, failed: int) -> None:
     async with async_session() as session:
         session.add(BroadcastLog(sent_count=sent, failed_count=failed))
         await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# SERIES TAHRIRLASH
+# ---------------------------------------------------------------------------
+
+async def update_series_field(series_id: int, field: str, value) -> None:
+    async with async_session() as session:
+        series = await session.get(Series, series_id)
+        if series:
+            setattr(series, field, value)
+            await session.commit()
+
+
+async def get_episode_by_series_and_number(series_id: int, episode_number: int) -> "Episode | None":
+    async with async_session() as session:
+        result = await session.execute(
+            select(Episode).where(
+                Episode.series_id == series_id,
+                Episode.episode_number == episode_number,
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+async def update_episode_video(episode_id: int, video_file_id: str) -> None:
+    async with async_session() as session:
+        ep = await session.get(Episode, episode_id)
+        if ep:
+            ep.video_file_id = video_file_id
+            await session.commit()
+
+
+async def delete_episode(episode_id: int) -> None:
+    async with async_session() as session:
+        ep = await session.get(Episode, episode_id)
+        if ep:
+            await session.delete(ep)
+            await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# PREMIUM ORDERS (buyurtmalar)
+# ---------------------------------------------------------------------------
+
+async def create_premium_order(
+    user_id: int,
+    username: str | None,
+    full_name: str | None,
+    plan_id: int,
+    plan_name: str,
+    price: int,
+) -> PremiumOrder:
+    async with async_session() as session:
+        order = PremiumOrder(
+            user_id=user_id,
+            username=username,
+            full_name=full_name,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            price=price,
+            status="pending",
+        )
+        session.add(order)
+        await session.commit()
+        await session.refresh(order)
+        return order
+
+
+async def get_premium_order(order_id: int) -> PremiumOrder | None:
+    async with async_session() as session:
+        return await session.get(PremiumOrder, order_id)
+
+
+async def confirm_premium_order(order_id: int, admin_id: int) -> PremiumOrder | None:
+    async with async_session() as session:
+        order = await session.get(PremiumOrder, order_id)
+        if order and order.status == "pending":
+            order.status = "paid"
+            order.confirmed_at = datetime.utcnow()
+            order.confirmed_by = admin_id
+            await session.commit()
+            await session.refresh(order)
+        return order
+
+
+async def reject_premium_order(order_id: int, admin_id: int) -> PremiumOrder | None:
+    async with async_session() as session:
+        order = await session.get(PremiumOrder, order_id)
+        if order and order.status == "pending":
+            order.status = "rejected"
+            order.confirmed_at = datetime.utcnow()
+            order.confirmed_by = admin_id
+            await session.commit()
+            await session.refresh(order)
+        return order
+
+
+# ---------------------------------------------------------------------------
+# BOT SETTINGS (key-value sozlamalar)
+# ---------------------------------------------------------------------------
+
+DEFAULT_PAYMENT_TEMPLATE = (
+    "💎 <b>Premium xarid qilish</b>\n\n"
+    "Siz tanlagan tarif: <b>{tarif}</b>\n"
+    "💰 To'lov summasi: <b>{narx} so'm</b>\n\n"
+    "Quyidagi karta raqamlaridan biriga to'lovni amalga oshiring:\n\n"
+    "💳 <code>{card_number_1}</code>\n"
+    "💳 <code>{card_number_2}</code>\n\n"
+    "To'lovni amalga oshirgandan so'ng, to'lov chekini:\n\n"
+    "👉 @{admin_username}\n\n"
+    "adminiga yuboring.\n\n"
+    "⚠️ Chekni yuborishda Telegram profilingizdan yuboring, shunda to'lovni aniqlash oson bo'ladi.\n\n"
+    "✅ Admin to'lovni tekshirgandan so'ng Premium hisobingiz faollashtiriladi."
+)
+
+DEFAULT_SETTINGS = {
+    "premium_payment_template": DEFAULT_PAYMENT_TEMPLATE,
+    "card_number_1": "9860606752256077",
+    "card_number_2": "9860606752256077",
+    "admin_username": "JAMSHID2426",
+}
+
+
+async def ensure_default_settings() -> None:
+    """Default sozlamalarni yaratadi (agar mavjud bo'lmasa)."""
+    async with async_session() as session:
+        for key, value in DEFAULT_SETTINGS.items():
+            existing = await session.get(BotSettings, key)
+            if existing is None:
+                session.add(BotSettings(key=key, value=value))
+        await session.commit()
+
+
+async def get_setting(key: str) -> str | None:
+    async with async_session() as session:
+        setting = await session.get(BotSettings, key)
+        return setting.value if setting else DEFAULT_SETTINGS.get(key)
+
+
+async def set_setting(key: str, value: str) -> None:
+    async with async_session() as session:
+        setting = await session.get(BotSettings, key)
+        if setting:
+            setting.value = value
+        else:
+            session.add(BotSettings(key=key, value=value))
+        await session.commit()
