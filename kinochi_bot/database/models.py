@@ -114,3 +114,31 @@ class BroadcastLog(Base):
     sent_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class PremiumOrder(Base):
+    """Premium buyurtma — foydalanuvchi tarif tanlaganda yaratiladi."""
+    __tablename__ = "premium_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("premium_plans.id"))
+    plan_name: Mapped[str] = mapped_column(String(32))   # daily / weekly / monthly
+    price: Mapped[int] = mapped_column(BigInteger, default=0)
+    # pending → paid → (admin tasdiqlaydi) yoki rejected / cancelled
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confirmed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    plan: Mapped["PremiumPlan"] = relationship(lazy="joined")
+
+
+class BotSettings(Base):
+    """Bot sozlamalari — key-value juftligi."""
+    __tablename__ = "bot_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
