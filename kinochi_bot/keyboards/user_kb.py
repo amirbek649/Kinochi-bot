@@ -68,11 +68,12 @@ def premium_menu_kb(plans, is_premium: bool) -> InlineKeyboardMarkup:
         price_str = f"{price_val:,}".replace(",", " ")
         b.button(
             text=f"{plan_title(p.name)} ({p.duration_days} kun) — {price_str} so'm",
-            callback_data=f"noop:{p.id}",
+            callback_data=f"buypremium:{p.id}",
         )
     b.button(text="🎁 Promo kodni kiritish", callback_data="enter_promo")
     b.adjust(1)
     return b.as_markup()
+
 
 
 def plan_title(name: str) -> str:
