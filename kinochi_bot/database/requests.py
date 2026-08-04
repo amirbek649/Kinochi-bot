@@ -420,6 +420,17 @@ async def get_stats() -> dict:
         }
 
 
+async def get_all_premium_users() -> list[User]:
+    """Hozirda aktiv premium bo'lgan foydalanuvchilar ro'yxatini qaytaradi."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(User)
+            .where(User.is_premium == True)  # noqa: E712
+            .order_by(User.premium_until)
+        )
+        return list(result.scalars().all())
+
+
 async def log_broadcast(sent: int, failed: int) -> None:
     async with async_session() as session:
         session.add(BroadcastLog(sent_count=sent, failed_count=failed))
