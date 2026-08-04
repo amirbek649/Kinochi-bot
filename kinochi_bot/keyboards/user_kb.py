@@ -9,13 +9,12 @@ def main_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
     b.button(text="📂 Kategoriyalar")
     b.button(text="📺 Seriallar")
     b.button(text="💎 Premium")
-    b.button(text="🎁 Promo kod")
     b.button(text="ℹ️ Yordam")
     if is_admin:
         b.button(text="⚙️ Admin panel")
-        b.adjust(2, 2, 2, 1, 1, 1)
-    else:
         b.adjust(2, 2, 2, 1, 1)
+    else:
+        b.adjust(2, 2, 2, 1)
     return b.as_markup(resize_keyboard=True)
 
 
@@ -70,10 +69,17 @@ def premium_menu_kb(plans, is_premium: bool) -> InlineKeyboardMarkup:
             text=f"{plan_title(p.name)} ({p.duration_days} kun) — {price_str} so'm",
             callback_data=f"buypremium:{p.id}",
         )
-    b.button(text="🎁 Promo kodni kiritish", callback_data="enter_promo")
     b.adjust(1)
     return b.as_markup()
 
+
+def payment_confirm_kb(order_id: int) -> InlineKeyboardMarkup:
+    """Foydalanuvchi to'lovni amalga oshirdi — chek yuborish yoki bekor qilish."""
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ To'lovni qildim", callback_data=f"payment_done:{order_id}")
+    b.button(text="⏪️ Orqaga", callback_data="payment_cancel")
+    b.adjust(1)
+    return b.as_markup()
 
 
 def plan_title(name: str) -> str:
