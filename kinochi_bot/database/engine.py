@@ -39,14 +39,21 @@ async def init_db():
                 ("premium_plans", "price", "BIGINT DEFAULT 0"),
             ]:
                 try:
-                    # PostgreSQL uchun ustun mavjudligini tekshirish
-                    check_query = text(f"""
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name='{table}' AND column_name='{col}'
-                    """)
-                    result = await conn.execute(check_query)
-                    exists = result.fetchone()
+                    exists = False
+                    if conn.dialect.name == "sqlite":
+                        check_query = text(f"PRAGMA table_info({table})")
+                        result = await conn.execute(check_query)
+                        columns = [row[1] for row in result.fetchall()]
+                        exists = col in columns
+                    else:
+                        # PostgreSQL uchun ustun mavjudligini tekshirish
+                        check_query = text(f"""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='{table}' AND column_name='{col}'
+                        """)
+                        result = await conn.execute(check_query)
+                        exists = result.fetchone() is not None
                     
                     if not exists:
                         await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
