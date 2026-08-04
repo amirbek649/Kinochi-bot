@@ -10,8 +10,8 @@ from ..filters.admin_filter import IsAdmin
 from ..keyboards.user_kb import main_menu, cancel_kb, plan_title
 from ..keyboards.admin_kb import (
     admin_main_kb, back_to_admin_kb, admin_movies_kb, admin_series_kb,
-    admin_categories_kb, admin_channels_kb, admin_premium_kb, admin_promo_kb,
-    admin_promo_list_kb, admin_promo_detail_kb, plan_choice_kb, category_choice_kb,
+    admin_categories_kb, admin_channels_kb, admin_premium_kb,
+    plan_choice_kb, category_choice_kb,
     skip_kb, movie_edit_fields_kb, premium_choice_kb, admin_plan_manage_kb,
     series_edit_fields_kb, after_episode_kb,
     admin_settings_kb, admin_premium_settings_kb, order_confirm_kb,
@@ -20,7 +20,7 @@ from ..states.all_states import (
     AdminMovieAdd, AdminMovieEdit, AdminMovieDelete, AdminMovieSearch,
     AdminSeriesAdd, AdminSeriesDelete, AdminEpisodeAdd,
     AdminSeriesEdit, AdminEpisodeEdit,
-    AdminCategory, AdminChannel, AdminPremium, AdminPromo, AdminBroadcast,
+    AdminCategory, AdminChannel, AdminPremium, AdminBroadcast,
     AdminSettings,
 )
 
@@ -812,101 +812,38 @@ async def receive_premium_price(message: Message, state: FSMContext):
 
 
 # ---------------------------------------------------------------------------
-# PROMO KODLAR
+# 👑 PREMIUM FOYDALANUVCHILAR
 # ---------------------------------------------------------------------------
 
-@admin_router.callback_query(F.data == "adm:promo")
-async def cb_admin_promo(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await safe_edit(callback, "🎁 <b>Promo kodlar</b> bo'limi:", admin_promo_kb())
-    await callback.answer()
-
-
-@admin_router.callback_query(F.data == "adm_promo:add")
-async def cb_add_promo(callback: CallbackQuery, state: FSMContext):
-    await rq.ensure_default_plans()
-    await state.set_state(AdminPromo.code)
-    await callback.message.answer("🎁 Yangi promo kodni kiriting (masalan: KINOPREMIUM7):", reply_markup=cancel_kb())
-    await callback.answer()
-
-
-@admin_router.message(AdminPromo.code)
-async def receive_promo_code_admin(message: Message, state: FSMContext):
-    code = message.text.strip().upper()
-    if await rq.get_promo_by_code(code):
-        await message.answer("❌ Bu kod allaqachon mavjud. Boshqa kod kiriting.")
+@admin_router.callback_query(F.data == "adm:premium_users")
+async def cb_premium_users(callback: CallbackQuery):
+    """Barcha aktiv premium foydalanuvchilar ro'yxatini ko'rsatish."""
+    users = await rq.get_all_premium_users()
+    if not users:
+        await safe_edit(
+            callback,
+            "👑 <b>Premium foydalanuvchilar</b>\n\nHozirda aktiv premium foydalanuvchi yo'q.",
+            back_to_admin_kb(),
+        )
+        await callback.answer()
         return
-    await state.update_data(code=code)
-    await state.set_state(AdminPromo.choose_plan)
-    plans = await rq.get_plans()
-    await message.answer("💎 Tarifni tanlang:", reply_markup=plan_choice_kb(plans))
 
+    lines = ["👑 <b>Premium foydalanuvchilar ro'yxati</b>\n"]
+    for i, u in enumerate(users, start=1):
+        name = u.full_name or u.username or str(u.id)
+        username_str = f" (@{u.username})" if u.username else ""
+        until_str = u.premium_until.strftime("%d.%m.%Y %H:%M") if u.premium_until else "—"
+        lines.append(
+            f"{i}. <a href='tg://user?id={u.id}'>{name}</a>{username_str}\n"
+            f"   ⏳ Muddat: <b>{until_str}</b> gacha"
+        )
+    text = "\n\n".join(lines)
 
-@admin_router.callback_query(F.data.startswith("adm_promo_plan:"), AdminPromo.choose_plan)
-async def receive_promo_plan(callback: CallbackQuery, state: FSMContext):
-    plan_id = int(callback.data.split(":")[1])
-    data = await state.get_data()
-    promo = await rq.create_promo(data["code"], plan_id)
-    await state.clear()
-    plan = await rq.get_plan(plan_id)
-    await callback.message.answer(
-        f"✅ Promo kod yaratildi!\n\n🎁 Kod: <code>{promo.code}</code>\n"
-        f"💎 Tarif: {plan_title(plan.name)} ({plan.duration_days} kun)",
-        reply_markup=main_menu(True),
-    )
-    await callback.message.answer("🎁 Promo kodlar bo'limi:", reply_markup=admin_promo_kb())
-    await callback.answer()
+    # Telegram xabar limiti: 4096 belgi. Uzun bo'lsa qisqartiramiz.
+    if len(text) > 4000:
+        text = text[:4000] + "\n...\n(Ro'yxat qisqartirildi)"
 
-
-@admin_router.callback_query(F.data == "adm_promo:list")
-async def cb_list_promo(callback: CallbackQuery):
-    promos = await rq.get_all_promos()
-    if not promos:
-        await callback.answer("❌ Hozircha promo kodlar yo'q.", show_alert=True)
-        return
-    await safe_edit(callback, "🎁 <b>Promo kodlar</b> ro'yxati:", admin_promo_list_kb(promos))
-    await callback.answer()
-
-
-def _promo_detail_text(promo) -> str:
-    status = "✅ Aktiv" if promo.is_active else "🚫 Noaktiv"
-    used = f"\n👤 Ishlatgan: <code>{promo.used_by}</code>" if promo.is_used else "\n🆕 Hali ishlatilmagan"
-    return (
-        f"🎁 Kod: <code>{promo.code}</code>\n"
-        f"💎 Tarif: {plan_title(promo.plan.name)} ({promo.plan.duration_days} kun)\n"
-        f"📌 Holati: {status}{used}"
-    )
-
-
-@admin_router.callback_query(F.data.startswith("adm_promo:view:"))
-async def cb_view_promo(callback: CallbackQuery):
-    promo_id = int(callback.data.split(":")[2])
-    promo = await rq.get_promo_by_id(promo_id)
-    if not promo:
-        await callback.answer("❌ Topilmadi", show_alert=True)
-        return
-    await safe_edit(callback, _promo_detail_text(promo), admin_promo_detail_kb(promo))
-    await callback.answer()
-
-
-@admin_router.callback_query(F.data.startswith("adm_promo:toggle:"))
-async def cb_toggle_promo(callback: CallbackQuery):
-    promo_id = int(callback.data.split(":")[2])
-    await rq.toggle_promo(promo_id)
-    promo = await rq.get_promo_by_id(promo_id)
-    await safe_edit(callback, _promo_detail_text(promo), admin_promo_detail_kb(promo))
-    await callback.answer("Holat o'zgartirildi")
-
-
-@admin_router.callback_query(F.data.startswith("adm_promo:delete:"))
-async def cb_delete_promo(callback: CallbackQuery):
-    promo_id = int(callback.data.split(":")[2])
-    await rq.delete_promo(promo_id)
-    promos = await rq.get_all_promos()
-    if promos:
-        await safe_edit(callback, "🗑 Promo kod o'chirildi.\n\n🎁 Promo kodlar ro'yxati:", admin_promo_list_kb(promos))
-    else:
-        await safe_edit(callback, "🗑 Promo kod o'chirildi.", admin_promo_kb())
+    await safe_edit(callback, text, back_to_admin_kb())
     await callback.answer()
 
 
@@ -1279,11 +1216,17 @@ async def cb_confirm_order(callback: CallbackQuery, bot: Bot):
     except Exception:
         pass
 
-    price_str = f"{order.price:,}".replace(",", " ")
-    await callback.message.edit_text(
-        callback.message.text + f"\n\n✅ <b>Tasdiqlandi!</b> Admin: {callback.from_user.full_name}\nPremium: {until_str} gacha",
-        reply_markup=None,
-    )
+    text_to_append = f"\n\n✅ <b>Tasdiqlandi!</b> Admin: {callback.from_user.full_name}\nPremium: {until_str} gacha"
+    if callback.message.photo:
+        await callback.message.edit_caption(
+            caption=(callback.message.caption or "") + text_to_append,
+            reply_markup=None,
+        )
+    else:
+        await callback.message.edit_text(
+            text=(callback.message.text or "") + text_to_append,
+            reply_markup=None,
+        )
     await callback.answer("✅ Premium faollashtirildi!")
 
 
@@ -1307,8 +1250,15 @@ async def cb_reject_order(callback: CallbackQuery, bot: Bot):
     except Exception:
         pass
 
-    await callback.message.edit_text(
-        callback.message.text + f"\n\n❌ <b>Rad etildi!</b> Admin: {callback.from_user.full_name}",
-        reply_markup=None,
-    )
+    text_to_append = f"\n\n❌ <b>Rad etildi!</b> Admin: {callback.from_user.full_name}"
+    if callback.message.photo:
+        await callback.message.edit_caption(
+            caption=(callback.message.caption or "") + text_to_append,
+            reply_markup=None,
+        )
+    else:
+        await callback.message.edit_text(
+            text=(callback.message.text or "") + text_to_append,
+            reply_markup=None,
+        )
     await callback.answer("❌ Buyurtma rad etildi.")
