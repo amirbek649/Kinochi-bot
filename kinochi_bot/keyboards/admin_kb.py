@@ -9,7 +9,7 @@ def admin_main_kb() -> InlineKeyboardMarkup:
     b.button(text="📂 Kategoriyalar", callback_data="adm:categories")
     b.button(text="📢 Majburiy obuna", callback_data="adm:channels")
     b.button(text="💎 Premium", callback_data="adm:premium")
-    b.button(text="🎁 Promo kodlar", callback_data="adm:promo")
+    b.button(text="👑 Premium foydalanuvchilar", callback_data="adm:premium_users")
     b.button(text="📣 Ommaviy xabar", callback_data="adm:broadcast")
     b.button(text="📊 Statistika", callback_data="adm:stats")
     b.button(text="⚙️ Sozlamalar", callback_data="adm:settings")
@@ -95,35 +95,6 @@ def premium_choice_kb(prefix: str = "premchoice") -> InlineKeyboardMarkup:
     b.adjust(2)
     return b.as_markup()
 
-
-def admin_promo_kb() -> InlineKeyboardMarkup:
-    b = InlineKeyboardBuilder()
-    b.button(text="➕ Promo kod yaratish", callback_data="adm_promo:add")
-    b.button(text="📋 Promo kodlar ro'yxati", callback_data="adm_promo:list")
-    b.button(text="🔙 Orqaga", callback_data="adm:back")
-    b.adjust(1)
-    return b.as_markup()
-
-
-def admin_promo_list_kb(promos) -> InlineKeyboardMarkup:
-    b = InlineKeyboardBuilder()
-    for p in promos:
-        status = "✅" if p.is_active else "🚫"
-        used = " (ishlatilgan)" if p.is_used else ""
-        b.button(text=f"{status} {p.code}{used}", callback_data=f"adm_promo:view:{p.id}")
-    b.button(text="🔙 Orqaga", callback_data="adm:promo")
-    b.adjust(1)
-    return b.as_markup()
-
-
-def admin_promo_detail_kb(promo) -> InlineKeyboardMarkup:
-    b = InlineKeyboardBuilder()
-    toggle_text = "🚫 Noaktiv qilish" if promo.is_active else "✅ Aktiv qilish"
-    b.button(text=toggle_text, callback_data=f"adm_promo:toggle:{promo.id}")
-    b.button(text="🗑 O'chirish", callback_data=f"adm_promo:delete:{promo.id}")
-    b.button(text="🔙 Orqaga", callback_data="adm_promo:list")
-    b.adjust(1)
-    return b.as_markup()
 
 
 def plan_choice_kb(plans, prefix="adm_promo_plan") -> InlineKeyboardMarkup:
