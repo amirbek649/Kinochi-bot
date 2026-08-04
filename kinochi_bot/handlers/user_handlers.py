@@ -8,7 +8,7 @@ from ..database import requests as rq
 from ..config import ADMIN_IDS
 from ..keyboards.user_kb import (
     main_menu, cancel_kb, categories_kb, movies_list_kb, series_list_kb,
-    episodes_kb, premium_menu_kb, subscribe_kb, plan_title,
+    episodes_kb, premium_menu_kb, subscribe_kb, plan_title, payment_confirm_kb,
 )
 from ..states.all_states import UserStates
 
@@ -148,8 +148,7 @@ async def help_message(message: Message):
         "🎬 <b>Kino qidirish</b> — kino nomini yozing\n"
         "📂 <b>Kategoriyalar</b> — janr bo'yicha kinolarni ko'ring\n"
         "📺 <b>Seriallar</b> — seriallar va qismlarini tomosha qiling\n"
-        "💎 <b>Premium</b> — majburiy obunasiz kino ko'rish imkoniyati\n"
-        "🎁 <b>Promo kod</b> — promo kod orqali Premiumni faollashtiring"
+        "💎 <b>Premium</b> — majburiy obunasiz kino ko'rish imkoniyati"
     )
 
 
@@ -410,16 +409,9 @@ async def show_premium(message: Message):
     await message.answer(text, reply_markup=premium_menu_kb(plans, bool(user and user.is_premium)))
 
 
-@user_router.callback_query(F.data == "enter_promo")
-async def cb_enter_promo(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(UserStates.waiting_promo_code)
-    await callback.message.answer("🎁 Promo kodni kiriting:", reply_markup=cancel_kb())
-    await callback.answer()
-
-
 @user_router.callback_query(F.data.startswith("buypremium:"))
-async def cb_buy_premium(callback: CallbackQuery, bot: Bot):
-    """Foydalanuvchi premium tarif tanladi — admin xabardor qilinadi, foydalanuvchiga to'lov xabari."""
+async def cb_buy_premium(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    """Foydalanuvchi premium tarif tanladi — to'lov ma'lumotlari va 'To'lovni qildim' tugmasi ko'rsatiladi."""
     plan_id = int(callback.data.split(":")[1])
     plan = await rq.get_plan(plan_id)
     if not plan:
@@ -429,7 +421,7 @@ async def cb_buy_premium(callback: CallbackQuery, bot: Bot):
     user = callback.from_user
     price_str = f"{plan.price:,}".replace(",", " ") if plan.price else "0"
 
-    # Buyurtmani DB'ga saqlash
+    # Buyurtmani DB'ga saqlash (pending holat)
     order = await rq.create_premium_order(
         user_id=user.id,
         username=user.username,
@@ -439,30 +431,7 @@ async def cb_buy_premium(callback: CallbackQuery, bot: Bot):
         price=plan.price or 0,
     )
 
-    # Adminlarga xabar yuborish
-    user_mention = f"<a href='tg://user?id={user.id}'>{user.full_name or user.username or user.id}</a>"
-    admin_text = (
-        f"💎 <b>Yangi Premium buyurtma!</b>\n\n"
-        f"👤 Foydalanuvchi: {user_mention}\n"
-        f"🆔 Telegram ID: <code>{user.id}</code>\n"
-        f"📦 Tarif: <b>{plan_title(plan.name)} ({plan.duration_days} kun)</b>\n"
-        f"💰 Narxi: <b>{price_str} so'm</b>\n"
-        f"🕐 Vaqt: {order.created_at.strftime('%d.%m.%Y %H:%M')}\n"
-        f"📊 Status: Kutilmoqda\n"
-        f"🔖 Buyurtma ID: #{order.id}\n\n"
-        f"Foydalanuvchiga to'lovni amalga oshirish bo'yicha ko'rsatma yuborildi."
-    )
-    for admin_id in ADMIN_IDS:
-        try:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=admin_text,
-                reply_markup=order_confirm_kb(order.id),
-            )
-        except Exception:
-            pass
-
-    # Foydalanuvchiga to'lov xabarini DB'dan olish va yuborish
+    # Foydalanuvchiga to'lov ma'lumotlarini ko'rsatish
     template = await rq.get_setting("premium_payment_template")
     card1 = await rq.get_setting("card_number_1") or "—"
     card2 = await rq.get_setting("card_number_2") or "—"
@@ -477,24 +446,102 @@ async def cb_buy_premium(callback: CallbackQuery, bot: Bot):
         user_id=user.id,
         user_name=user.full_name or user.username or str(user.id),
     )
-    await callback.message.answer(payment_text)
+    await callback.message.answer(payment_text, reply_markup=payment_confirm_kb(order.id))
     await callback.answer()
 
 
-@user_router.message(F.text == "🎁 Promo kod")
-async def ask_promo_directly(message: Message, state: FSMContext):
-    await state.set_state(UserStates.waiting_promo_code)
-    await message.answer("🎁 Promo kodni kiriting:", reply_markup=cancel_kb())
+@user_router.callback_query(F.data.startswith("payment_done:"))
+async def cb_payment_done(callback: CallbackQuery, state: FSMContext):
+    """Foydalanuvchi to'lovni amalga oshirdi — chek rasmini yuborishini so'raymiz."""
+    order_id = int(callback.data.split(":")[1])
+    order = await rq.get_premium_order(order_id)
+    if not order or order.status != "pending":
+        await callback.answer("❌ Buyurtma topilmadi yoki allaqachon ko'rib chiqilgan.", show_alert=True)
+        return
+
+    await state.update_data(order_id=order_id)
+    await state.set_state(UserStates.waiting_receipt)
+    await callback.message.answer(
+        "📝 <b>To'lov chekini rasmga olib yuboring</b>\n\n"
+        "To'lov qilgandan so'ng chekni (screenshot yoki foto) yuboring. "
+        "Admin tekshirib, premiumni faollashtiradi.",
+        reply_markup=cancel_kb(),
+    )
+    await callback.answer()
 
 
-@user_router.message(UserStates.waiting_promo_code)
-async def receive_promo_code(message: Message, state: FSMContext):
-    code = message.text.strip()
-    ok, text, days = await rq.use_promo(code, message.from_user.id)
+@user_router.callback_query(F.data == "payment_cancel")
+async def cb_payment_cancel(callback: CallbackQuery, state: FSMContext):
+    """To'lovni bekor qilish."""
+    await state.clear()
+    plans = await rq.get_plans()
+    await callback.message.answer(
+        "❌ To'lov bekor qilindi. Premium tariflarni qayta ko'rish uchun 💎 Premium tugmasini bosing.",
+        reply_markup=main_menu(False),
+    )
+    await callback.answer()
+
+
+@user_router.message(UserStates.waiting_receipt, F.photo)
+async def receive_receipt_photo(message: Message, state: FSMContext, bot: Bot):
+    """Foydalanuvchi chek rasmini yubordi — adminlarga yuboriladi."""
+    data = await state.get_data()
+    order_id = data.get("order_id")
+    if not order_id:
+        await state.clear()
+        await message.answer("❌ Xatolik yuz berdi. Qaytadan urinib ko'ring.", reply_markup=main_menu(False))
+        return
+
+    order = await rq.get_premium_order(order_id)
+    if not order or order.status != "pending":
+        await state.clear()
+        await message.answer("❌ Bu buyurtma topilmadi yoki allaqachon ko'rib chiqilgan.", reply_markup=main_menu(False))
+        return
+
     await state.clear()
 
-    if ok and days:
-        until = await rq.activate_premium(message.from_user.id, days)
-        text += f"\n💎 Premium muddati: {until.strftime('%d.%m.%Y %H:%M')} gacha"
+    user = message.from_user
+    plan = await rq.get_plan(order.plan_id)
+    price_str = f"{order.price:,}".replace(",", " ")
+    card1 = await rq.get_setting("card_number_1") or "—"
+    plan_label = f"{plan_title(order.plan_name)} ({plan.duration_days if plan else '?'} kun)"
+    user_mention = f"<a href='tg://user?id={user.id}'>{user.full_name or user.username or user.id}</a>"
 
-    await message.answer(text, reply_markup=main_menu(is_admin(message.from_user.id)))
+    from datetime import datetime
+    now_str = datetime.now().strftime("%Y.%m.%d %H:%M")
+
+    admin_caption = (
+        f"Foydalanuvchi hisobini to'ldirmoqchi!\n\n"
+        f"💳 To'lov tizimi: Anor bank\n"
+        f"👤 Foydalanuvchi: {user_mention}\n"
+        f"💰 To'lov miqdori: {price_str} so'm\n\n"
+        f"📦 Tarif: <b>{plan_label}</b>\n"
+        f"🕐 Sana: {now_str}\n"
+        f"🔖 Buyurtma ID: #{order_id}"
+    )
+
+    from ..keyboards.admin_kb import order_confirm_kb
+    # Adminlarga chekni + tugmalarni yuborish
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_photo(
+                chat_id=admin_id,
+                photo=message.photo[-1].file_id,
+                caption=admin_caption,
+                reply_markup=order_confirm_kb(order_id),
+            )
+        except Exception:
+            pass
+
+    # Foydalanuvchiga tasdiqlash xabari
+    await message.answer(
+        "⏳ <b>Qabul qilindi!</b>\n\n"
+        "To'lovingiz 5 daqiqadan 24 soatgacha bo'lgan vaqt ichida amalga oshiriladi!",
+        reply_markup=main_menu(is_admin(message.from_user.id)),
+    )
+
+
+@user_router.message(UserStates.waiting_receipt)
+async def receive_receipt_invalid(message: Message):
+    """Rasm emas narsa yuborilsa xato."""
+    await message.answer("❌ Iltimos to'lov chekini <b>rasm</b> sifatida yuboring (photo).",)
