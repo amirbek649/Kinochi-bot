@@ -927,10 +927,12 @@ async def cb_premium_settings(callback: CallbackQuery, state: FSMContext):
     template = await rq.get_setting("premium_payment_template") or "—"
     # Faqat birinchi 200 belgisini ko'rsatamiz (preview)
     preview = template[:200] + ("..." if len(template) > 200 else "")
+    import html
+    preview_escaped = html.escape(preview)
     text = (
         "⚙️ <b>Premium sozlamalari</b>\n\n"
         "📝 Joriy to'lov xabari (preview):\n"
-        f"<i>{preview}</i>\n\n"
+        f"<i>{preview_escaped}</i>\n\n"
         "O'zgartirmoqchi bo'lgan parametrni tanlang:"
     )
     await safe_edit(callback, text, admin_premium_settings_kb())
