@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 class UserStates(StatesGroup):
     waiting_search_query = State()
     waiting_movie_code = State()
-    waiting_promo_code = State()
+    waiting_receipt = State()   # chek rasmini yuborishda ishlatiladi
 
 
 # --------------------------- ADMIN: KINOLAR ---------------------------
@@ -98,11 +98,6 @@ class AdminPremium(StatesGroup):
     price = State()
 
 
-# --------------------------- ADMIN: PROMO KOD ---------------------------
-
-class AdminPromo(StatesGroup):
-    code = State()
-    choose_plan = State()
 
 
 # --------------------------- ADMIN: OMMAVIY XABAR ---------------------------
@@ -118,4 +113,3 @@ class AdminSettings(StatesGroup):
     edit_card_1 = State()
     edit_card_2 = State()
     edit_admin_username = State()
-
