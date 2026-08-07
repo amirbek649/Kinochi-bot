@@ -59,10 +59,16 @@ async def user_needs_subscription(bot: Bot, user_id: int) -> list:
 async def deliver_movie(message: Message, bot: Bot, movie) -> None:
     caption = build_movie_caption(movie)
     if movie.cover_file_id:
-        await message.answer_photo(movie.cover_file_id, caption=caption)
-        await message.answer_video(movie.video_file_id)
+        msg1 = await message.answer_photo(movie.cover_file_id, caption=caption, protect_content=True)
+        msg2 = await message.answer_video(movie.video_file_id, protect_content=True)
+        if movie.is_premium:
+            await rq.add_sent_premium_message(user_id=message.chat.id, message_id=msg1.message_id)
+            await rq.add_sent_premium_message(user_id=message.chat.id, message_id=msg2.message_id)
     else:
-        await message.answer_video(movie.video_file_id, caption=caption)
+        msg1 = await message.answer_video(movie.video_file_id, caption=caption, protect_content=True)
+        if movie.is_premium:
+            await rq.add_sent_premium_message(user_id=message.chat.id, message_id=msg1.message_id)
+
 
 
 async def check_content_premium_access(user_id: int, is_premium_content: bool) -> bool:
@@ -295,12 +301,17 @@ async def cb_show_series_episodes(callback: CallbackQuery):
 
     caption = build_series_caption(series)
     if series.cover_file_id:
-        await callback.message.answer_photo(series.cover_file_id, caption=caption)
+        msg = await callback.message.answer_photo(series.cover_file_id, caption=caption, protect_content=True)
+        if series.is_premium:
+            await rq.add_sent_premium_message(user_id=callback.message.chat.id, message_id=msg.message_id)
     else:
-        await callback.message.answer(caption)
+        msg = await callback.message.answer(caption, protect_content=True)
+        if series.is_premium:
+            await rq.add_sent_premium_message(user_id=callback.message.chat.id, message_id=msg.message_id)
 
-    await callback.message.answer("📺 Qismni tanlang:", reply_markup=episodes_kb(episodes))
+    await callback.message.answer("📺 Qismni tanlang:", reply_markup=episodes_kb(episodes), protect_content=True)
     await callback.answer()
+
 
 
 @user_router.callback_query(F.data.startswith("getepisode:"))
@@ -325,11 +336,15 @@ async def cb_get_episode(callback: CallbackQuery, bot: Bot):
         await callback.answer()
         return
 
-    await callback.message.answer_video(
+    msg = await callback.message.answer_video(
         episode.video_file_id,
         caption=f"📺 {episode.series.title} — {episode.episode_number}-qism",
+        protect_content=True,
     )
+    if episode.series.is_premium:
+        await rq.add_sent_premium_message(user_id=callback.message.chat.id, message_id=msg.message_id)
     await callback.answer()
+
 
 
 # ---------------------------------------------------------------------------
@@ -367,10 +382,14 @@ async def cb_check_subscription(callback: CallbackQuery, bot: Bot):
                 plans = await rq.get_plans()
                 await send_premium_required_message(callback, plans)
                 return
-            await callback.message.answer_video(
+            msg = await callback.message.answer_video(
                 episode.video_file_id,
                 caption=f"📺 {episode.series.title} — {episode.episode_number}-qism",
+                protect_content=True,
             )
+            if episode.series.is_premium:
+                await rq.add_sent_premium_message(user_id=callback.message.chat.id, message_id=msg.message_id)
+
 
 
 # ---------------------------------------------------------------------------
