@@ -142,3 +142,13 @@ class BotSettings(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SentPremiumMessage(Base):
+    """Foydalanuvchiga yuborilgan premium xabarlar logi."""
+    __tablename__ = "sent_premium_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    message_id: Mapped[int] = mapped_column(Integer)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
