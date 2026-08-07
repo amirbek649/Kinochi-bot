@@ -6,7 +6,7 @@ from .engine import async_session
 from .models import (
     User, Category, Movie, Series, Episode,
     RequiredChannel, PremiumPlan, PromoCode, BroadcastLog,
-    PremiumOrder, BotSettings,
+    PremiumOrder, BotSettings, SentPremiumMessage,
 )
 
 
@@ -582,4 +582,64 @@ async def set_setting(key: str, value: str) -> None:
             setting.value = value
         else:
             session.add(BotSettings(key=key, value=value))
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# SENT PREMIUM MESSAGES TRACKING & EXPIRY CLEANUP
+# ---------------------------------------------------------------------------
+
+async def add_sent_premium_message(user_id: int, message_id: int) -> None:
+    """Logs a sent premium video/movie message ID for a user."""
+    async with async_session() as session:
+        msg = SentPremiumMessage(user_id=user_id, message_id=message_id)
+        session.add(msg)
+        await session.commit()
+
+
+async def deactivate_expired_premiums() -> None:
+    """Checks and updates all users whose premium subscriptions have expired."""
+    async with async_session() as session:
+        now = datetime.utcnow()
+        result = await session.execute(
+            select(User).where(User.is_premium == True, User.premium_until < now)  # noqa: E712
+        )
+        expired_users = result.scalars().all()
+        for user in expired_users:
+            user.is_premium = False
+            user.premium_until = None
+        if expired_users:
+            await session.commit()
+
+
+async def get_expired_premium_message_logs() -> dict[int, list[int]]:
+    """
+    Finds all logged messages for users who are no longer premium.
+    Returns a dict mapping user_id to list of message_ids.
+    """
+    async with async_session() as session:
+        stmt = (
+            select(SentPremiumMessage.user_id, SentPremiumMessage.message_id)
+            .outerjoin(User, SentPremiumMessage.user_id == User.id)
+            .where((User.id == None) | (User.is_premium == False))  # noqa: E711, E712
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+        
+        from collections import defaultdict
+        user_to_msgs = defaultdict(list)
+        for user_id, message_id in rows:
+            user_to_msgs[user_id].append(message_id)
+            
+        return dict(user_to_msgs)
+
+
+async def delete_premium_message_logs(user_id: int, message_ids: list[int]) -> None:
+    """Removes message records from sent_premium_messages DB table after deletion."""
+    async with async_session() as session:
+        await session.execute(
+            sa_delete(SentPremiumMessage)
+            .where(SentPremiumMessage.user_id == user_id)
+            .where(SentPremiumMessage.message_id.in_(message_ids))
+        )
         await session.commit()
